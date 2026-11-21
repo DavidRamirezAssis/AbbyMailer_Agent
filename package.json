@@ -1,0 +1,20 @@
+{
+  "name": "reto-01-registro-proveedor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Agente conversacional para el registro de Periferia como proveedor ante clientes",
+  "scripts": {
+    "dev": "bun --watch src/server.ts",
+    "start": "bun src/server.ts",
+    "demo": "bun run demo.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.5",
+    "typescript": "^7.0.2"
+  }
+}

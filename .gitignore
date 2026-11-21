@@ -1,0 +1,17 @@
+# Dependencias
+node_modules/
+
+# Salidas generadas en ejecución (PRD §9.5)
+out/
+
+# Secretos (PRD §8)
+.env
+.env.*
+!.env.example
+
+# Sistema y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log

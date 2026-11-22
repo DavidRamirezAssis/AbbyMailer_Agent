@@ -28,6 +28,14 @@ Ejecuta todos los casos llamando directamente a las herramientas. No requiere cl
 bun install && bun run demo.ts
 ```
 
+## Pruebas
+
+Pruebas del ciclo del agente con un adaptador simulado. No requieren clave ni consumen créditos.
+
+```bash
+bun test
+```
+
 ## Variables de entorno
 
 Ver `.env.example`.

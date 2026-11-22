@@ -14,6 +14,14 @@ function registrar(prefijo: string, modulo: Record<string, HerramientaRegistrada
   return registro
 }
 
+/** Herramientas que modifican el estado del caso en out/ (las demás son de solo lectura). */
+export const HERRAMIENTAS_CON_ESTADO: ReadonlySet<string> = new Set([
+  "proveedor_mapear_campos",
+  "proveedor_generar_formulario",
+  "proveedor_armar_paquete",
+  "proveedor_simular_envio",
+])
+
 export const herramientas: ReadonlyMap<string, HerramientaRegistrada> = registrar(
   "proveedor",
   proveedor as unknown as Record<string, HerramientaRegistrada>,

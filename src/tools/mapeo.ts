@@ -25,7 +25,10 @@ export interface CampoMapeado {
   valor: Valor | null
   confianza: number
   nota?: string
-  confirmadoPorUsuario?: boolean
+  /** Decisión explícita del usuario sobre un campo que requería confirmación (DEC-25, DEC-26). */
+  decisionUsuario?: "aceptar" | "descartar"
+  /** Sesión en que el usuario tomó la decisión; solo se conserva dentro de esa sesión (DEC-26). */
+  sesionDecision?: string
 }
 
 export function normalizar(texto: string): string {

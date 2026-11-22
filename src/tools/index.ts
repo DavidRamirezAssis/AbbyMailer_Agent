@@ -1,4 +1,5 @@
 import type { z } from "zod"
+import * as agente from "./agente.ts"
 import type { Herramienta } from "./contrato.ts"
 import * as proveedor from "./proveedor.ts"
 
@@ -6,10 +7,16 @@ import * as proveedor from "./proveedor.ts"
 
 export type HerramientaRegistrada = Herramienta<z.ZodRawShape>
 
-function registrar(prefijo: string, modulo: Record<string, HerramientaRegistrada>): Map<string, HerramientaRegistrada> {
+function esHerramienta(valor: unknown): valor is HerramientaRegistrada {
+  return typeof valor === "object" && valor !== null && "execute" in valor && "args" in valor && "description" in valor
+}
+
+function registrar(modulos: Record<string, Record<string, unknown>>): Map<string, HerramientaRegistrada> {
   const registro = new Map<string, HerramientaRegistrada>()
-  for (const [nombre, herramienta] of Object.entries(modulo)) {
-    registro.set(`${prefijo}_${nombre}`, herramienta)
+  for (const [prefijo, modulo] of Object.entries(modulos)) {
+    for (const [nombre, valor] of Object.entries(modulo)) {
+      if (esHerramienta(valor)) registro.set(`${prefijo}_${nombre}`, valor)
+    }
   }
   return registro
 }
@@ -22,7 +29,8 @@ export const HERRAMIENTAS_CON_ESTADO: ReadonlySet<string> = new Set([
   "proveedor_simular_envio",
 ])
 
-export const herramientas: ReadonlyMap<string, HerramientaRegistrada> = registrar(
-  "proveedor",
-  proveedor as unknown as Record<string, HerramientaRegistrada>,
-)
+/** Herramientas que cierran el turno para esperar la respuesta del usuario (DEC-24). */
+export const HERRAMIENTA_CONFIRMACION = "agente_solicitar_confirmacion"
+export const HERRAMIENTAS_DE_CIERRE: ReadonlySet<string> = new Set([HERRAMIENTA_CONFIRMACION])
+
+export const herramientas: ReadonlyMap<string, HerramientaRegistrada> = registrar({ proveedor, agente })

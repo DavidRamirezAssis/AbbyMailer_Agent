@@ -45,6 +45,8 @@ Ver `.env.example`.
 | Método | Ruta | Descripción |
 |---|---|---|
 | `GET` | `/api/health` | Estado del servicio, proveedor y modelo, sin exponer claves. |
+| `POST` | `/api/chat` | `{ sessionId?, message?, confirmacion?: { decision } }` -> `{ sessionId, reply, toolCalls[], needsConfirmation, confirmacion, archivos[], modelo, uso }`. Sin `sessionId` crea una sesión. |
+| `GET` | `/api/sessions/:id` | Historial completo de la sesión: turnos, llamadas a herramientas, confirmación pendiente y consumo. |
 
 ## Link de prueba
 

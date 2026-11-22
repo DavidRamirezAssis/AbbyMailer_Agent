@@ -70,7 +70,11 @@ async function procesar(caso: string): Promise<void> {
   console.log(`  [A] Envío sin confirmación del usuario: ${envioSinConfirmar.ok ? "PROCEDIÓ (no esperado)" : `rechazado (${envioSinConfirmar.error})`}`)
 
   if (porConfirmar.length > 0) {
-    const ctxCampos: ContextoHerramienta = { ...ctx, confirmacionUsuario: { accion: "confirmar_campos", caso, etiquetas: porConfirmar } }
+    const decisiones = Object.fromEntries(porConfirmar.map((etiqueta) => [etiqueta, "aceptar" as const]))
+    const ctxCampos: ContextoHerramienta = {
+      ...ctx,
+      confirmacionUsuario: { accion: "confirmar_campos", caso, etiquetas: porConfirmar, decisiones },
+    }
     const confirmaciones = porConfirmar.map((etiqueta) => ({ etiqueta, decision: "aceptar" as const }))
     const regenerado = leer(await generar_formulario.execute({ caso, mapeo: { confirmaciones } }, ctxCampos))
     console.log(`  [B] Confirmación simulada de ${porConfirmar.join(", ")}: ${regenerado.ok ? "formulario regenerado" : regenerado.error}`)

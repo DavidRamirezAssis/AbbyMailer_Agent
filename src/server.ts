@@ -1,38 +1,33 @@
-import { resolve, sep } from "node:path"
+import { resolve } from "node:path"
+import { cargarPromptSistema } from "./agente/prompt.ts"
+import { AlmacenSesiones } from "./agente/sesiones.ts"
+import { crearManejador } from "./api/app.ts"
 import { cargarConfig } from "./config.ts"
+import type { AdaptadorLLM } from "./llm/adapter.ts"
+import { crearAdaptador } from "./llm/index.ts"
+import { herramientas } from "./tools/index.ts"
 
-// Servidor HTTP: sirve el front y la API desde una sola URL (DEC-18).
-// Estado: andamiaje. El endpoint de chat y el ciclo del agente se agregan según DEC-20.
+// Punto de entrada: una sola URL para el front y la API (DEC-18).
 
 const config = cargarConfig()
-const DIRECTORIO_WEB = resolve(import.meta.dir, "..", "web")
+const raiz = resolve(import.meta.dir, "..")
+const sistema = await cargarPromptSistema(raiz)
 
-function respuestaError(estado: number, mensaje: string): Response {
-  return Response.json({ ok: false, error: mensaje }, { status: estado })
-}
-
-async function servirEstatico(ruta: string): Promise<Response> {
-  const relativa = ruta === "/" ? "index.html" : ruta.replace(/^\/+/, "")
-  const absoluta = resolve(DIRECTORIO_WEB, relativa)
-  if (absoluta !== DIRECTORIO_WEB && !absoluta.startsWith(DIRECTORIO_WEB + sep)) {
-    return respuestaError(404, "Recurso no encontrado")
-  }
-  const archivo = Bun.file(absoluta)
-  if (!(await archivo.exists())) return respuestaError(404, "Recurso no encontrado")
-  return new Response(archivo)
+// Sin clave del modelo el servicio arranca igual: /api/health responde y el chat informa el problema.
+let adaptador: AdaptadorLLM | null = null
+let errorAdaptador: string | undefined
+try {
+  adaptador = crearAdaptador(config)
+} catch (error) {
+  errorAdaptador = error instanceof Error ? error.message : "El modelo de lenguaje no está configurado."
 }
 
 const servidor = Bun.serve({
   port: config.PORT,
-  async fetch(peticion) {
-    const url = new URL(peticion.url)
-    if (url.pathname === "/api/health") {
-      return Response.json({ ok: true, provider: config.LLM_PROVIDER, model: config.LLM_MODEL })
-    }
-    if (url.pathname.startsWith("/api/")) return respuestaError(404, "Ruta no encontrada")
-    if (peticion.method !== "GET") return respuestaError(405, "Método no permitido")
-    return servirEstatico(url.pathname)
-  },
+  // Un turno del agente puede tardar decenas de segundos; el valor por defecto de Bun es 10 s.
+  idleTimeout: 255,
+  fetch: crearManejador({ config, raiz, sistema, adaptador, ...(errorAdaptador ? { errorAdaptador } : {}), herramientas, sesiones: new AlmacenSesiones() }),
 })
 
 console.log(`Servidor escuchando en http://localhost:${servidor.port}`)
+if (errorAdaptador) console.warn(`Chat deshabilitado: ${errorAdaptador}`)

@@ -4,10 +4,14 @@ import type { z } from "zod"
 // Cada herramienta expone description, args (zod) y execute, que nunca lanza.
 
 /** Confirmación humana validada por el backend para el turno en curso (DEC-06). */
+export type DecisionUsuario = "aceptar" | "descartar"
+
 export interface ConfirmacionUsuario {
   accion: "confirmar_campos" | "enviar"
   caso: string
   etiquetas?: string[]
+  /** Decisión del usuario por etiqueta, registrada por el backend (DEC-25). */
+  decisiones?: Record<string, DecisionUsuario>
 }
 
 export interface ContextoHerramienta {

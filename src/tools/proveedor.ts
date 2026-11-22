@@ -1,8 +1,10 @@
 import { copyFile, mkdir, rm } from "node:fs/promises"
-import { join, relative, sep } from "node:path"
+import { join } from "node:path"
 import { z } from "zod"
 import { cargarConfig, fechaReferencia } from "../config.ts"
-import { type ContextoHerramienta, type ResultadoHerramienta, definirHerramienta, exito, fallo } from "./contrato.ts"
+import { type ContextoHerramienta, definirHerramienta } from "./contrato.ts"
+import { ejecutar, error, rutaRelativa } from "./ejecucion.ts"
+import { type MapeoGuardado, archivoEstado, archivoMapeo, guardarJson, leerEstadoPaquete, leerMapeo } from "./estado.ts"
 import {
   type Caso,
   type Maestro,
@@ -11,47 +13,17 @@ import {
   cargarGlosario,
   cargarIndiceSoportes,
   cargarMaestro,
-  leerJson,
   rutas,
 } from "./fuentes.ts"
 import { type CampoMapeado, esAmbiguo, formatearValor, mapearCampo } from "./mapeo.ts"
 import { evaluarPaquete, evaluarSoportes, redactarBorradorCorreo, redactarChecklist } from "./paquete.ts"
-import { registrar } from "./registro.ts"
 import { generarPdf, generarValoresPortal, generarXlsx } from "./salidas.ts"
 
 // Herramientas del proceso de registro como proveedor (PRD §6.2).
 // El nombre que ve el modelo es proveedor_<export>. Ninguna lanza excepciones.
+// Todo lo que exporta este módulo se registra como herramienta.
 
 const argCaso = z.string().min(1).describe("Nombre de la carpeta del caso en fixtures/reto-01/casos/")
-
-// ---------------------------------------------------------------------------
-// Persistencia del estado del caso en out/<caso>/ (DEC-04, DEC-05)
-// ---------------------------------------------------------------------------
-
-const esquemaCampoMapeado = z.object({
-  etiqueta: z.string(),
-  obligatorio: z.boolean(),
-  estado: z.enum(["lleno", "faltante", "requiere_confirmacion"]),
-  ruta: z.string().nullable(),
-  valor: z.union([z.string(), z.number()]).nullable(),
-  confianza: z.number(),
-  nota: z.string().optional(),
-  confirmadoPorUsuario: z.boolean().optional(),
-})
-
-const esquemaMapeoGuardado = z.object({
-  caso: z.string(),
-  campos: z.array(esquemaCampoMapeado),
-})
-
-const esquemaEstadoPaquete = z.object({
-  caso: z.string(),
-  listo_para_firma: z.boolean(),
-  motivos: z.array(z.string()),
-  adjuntos: z.array(z.string()),
-})
-
-type MapeoGuardado = z.infer<typeof esquemaMapeoGuardado>
 
 const ARCHIVO_FORMULARIO: Record<Caso["solicitud"]["formato"], string> = {
   xlsx: "formulario.xlsx",
@@ -59,64 +31,8 @@ const ARCHIVO_FORMULARIO: Record<Caso["solicitud"]["formato"], string> = {
   portal: "valores-portal.md",
 }
 
-const archivoMapeo = (ctx: ContextoHerramienta, caso: string) => join(rutas.salidaCaso(ctx.directory, caso), "mapeo.json")
-const archivoEstado = (ctx: ContextoHerramienta, caso: string) =>
-  join(rutas.salidaCaso(ctx.directory, caso), "estado-paquete.json")
-
-function rutaRelativa(ctx: ContextoHerramienta, absoluta: string): string {
-  return relative(ctx.directory, absoluta).split(sep).join("/")
-}
-
-async function guardarJson(destino: string, contenido: unknown): Promise<void> {
-  await Bun.write(destino, JSON.stringify(contenido, null, 2))
-}
-
-async function leerMapeo(ctx: ContextoHerramienta, caso: string): Promise<ResultadoHerramienta<MapeoGuardado>> {
-  const ruta = archivoMapeo(ctx, caso)
-  if (!(await Bun.file(ruta).exists())) return { ok: false, error: "Primero mapea los campos del caso." }
-  return leerJson(ruta, esquemaMapeoGuardado, "el mapeo registrado del caso")
-}
-
 // ---------------------------------------------------------------------------
-// Envoltura común: registro (RN5) y captura de errores inesperados (HU-5)
-// ---------------------------------------------------------------------------
-
-interface Salida<T> {
-  resultado: ResultadoHerramienta<T>
-  resumen: string
-}
-
-async function ejecutar<T>(
-  ctx: ContextoHerramienta,
-  herramienta: string,
-  caso: string,
-  cuerpo: () => Promise<Salida<T>>,
-): Promise<string> {
-  let salida: Salida<T>
-  try {
-    salida = await cuerpo()
-  } catch {
-    salida = {
-      resultado: { ok: false, error: `Ocurrió un error inesperado al ejecutar ${herramienta}. Intente de nuevo o revise los archivos del caso.` },
-      resumen: "error inesperado",
-    }
-  }
-  const { resultado } = salida
-  await registrar(ctx, {
-    herramienta,
-    caso,
-    ok: resultado.ok,
-    resumen: resultado.ok ? salida.resumen : resultado.error,
-  })
-  return resultado.ok ? exito(resultado.data) : fallo(resultado.error)
-}
-
-function error<T>(mensaje: string): Salida<T> {
-  return { resultado: { ok: false, error: mensaje }, resumen: mensaje }
-}
-
-// ---------------------------------------------------------------------------
-// proveedor_leer_solicitud (HU-1)
+// proveedor_leer_solicitud (HU-02, HU-03)
 // ---------------------------------------------------------------------------
 
 export const leer_solicitud = definirHerramienta({
@@ -155,7 +71,7 @@ export const leer_solicitud = definirHerramienta({
 })
 
 // ---------------------------------------------------------------------------
-// proveedor_mapear_campos (HU-2)
+// proveedor_mapear_campos (HU-04, HU-05, DEC-22, DEC-26)
 // ---------------------------------------------------------------------------
 
 export const mapear_campos = definirHerramienta({
@@ -176,16 +92,20 @@ export const mapear_campos = definirHerramienta({
       if (!glosario.ok) return error(glosario.error)
       if (!maestro.ok) return error(maestro.error)
 
-      // Se mapea siempre la plantilla completa para que el formulario quede trazable.
+      // DEC-22: se mapea siempre la plantilla completa para que el formulario quede trazable.
       const plantilla = camposSolicitados(cargado.data.plantilla)
       const etiquetasPlantilla = new Set(plantilla.map((c) => c.etiqueta))
       const solicitadas = new Set(campos)
       const advertencias = [
         ...campos.filter((e) => !etiquetasPlantilla.has(e)).map((e) => `"${e}" no pertenece a la plantilla y se ignoró.`),
-        ...plantilla.filter((c) => !solicitadas.has(c.etiqueta)).map((c) => `"${c.etiqueta}" no se solicitó pero se mapeó por pertenecer a la plantilla.`),
+        ...plantilla
+          .filter((c) => !solicitadas.has(c.etiqueta))
+          .map((c) => `"${c.etiqueta}" no se solicitó pero se mapeó por pertenecer a la plantilla.`),
       ]
 
-      const mapeados = plantilla.map((c) => mapearCampo(c, cargado.data.solicitud.pais, glosario.data, maestro.data))
+      const nuevos = plantilla.map((c) => mapearCampo(c, cargado.data.solicitud.pais, glosario.data, maestro.data))
+      const previo = await leerMapeo(ctx, caso)
+      const mapeados = conservarDecisiones(nuevos, previo.ok ? previo.data.campos : [], ctx.sessionId)
       await mkdir(rutas.salidaCaso(ctx.directory, caso), { recursive: true })
       await guardarJson(archivoMapeo(ctx, caso), { caso, campos: mapeados } satisfies MapeoGuardado)
 
@@ -198,17 +118,39 @@ export const mapear_campos = definirHerramienta({
   },
 })
 
+/**
+ * DEC-26: una decisión del usuario se conserva al volver a mapear si se tomó en la misma
+ * sesión y la etiqueta y la ruta del maestro no cambiaron. Otra sesión vuelve a preguntar.
+ */
+function conservarDecisiones(nuevos: CampoMapeado[], previos: CampoMapeado[], sesion: string): CampoMapeado[] {
+  return nuevos.map((campo) => {
+    const previo = previos.find((p) => p.etiqueta === campo.etiqueta)
+    if (
+      previo?.decisionUsuario === undefined ||
+      previo.sesionDecision !== sesion ||
+      campo.estado !== "requiere_confirmacion" ||
+      previo.ruta !== campo.ruta
+    ) {
+      return campo
+    }
+    const base = { ...campo, decisionUsuario: previo.decisionUsuario, sesionDecision: sesion }
+    return previo.decisionUsuario === "aceptar"
+      ? { ...base, estado: "lleno" }
+      : { ...base, estado: "faltante", valor: null, nota: "Descartado por el usuario." }
+  })
+}
+
 function resumirMapeo(caso: string, campos: CampoMapeado[], advertencias: string[]) {
   return {
     caso,
     llenos: campos
       .filter((c) => c.estado === "lleno")
-      .map(({ etiqueta, ruta, valor, confianza, confirmadoPorUsuario }) => ({
+      .map(({ etiqueta, ruta, valor, confianza, decisionUsuario }) => ({
         etiqueta,
         ruta,
         valor,
         confianza,
-        ...(confirmadoPorUsuario ? { confirmado_por_usuario: true } : {}),
+        ...(decisionUsuario === "aceptar" ? { confirmado_por_usuario: true } : {}),
       })),
     faltantes: campos
       .filter((c) => c.estado === "faltante")
@@ -221,7 +163,7 @@ function resumirMapeo(caso: string, campos: CampoMapeado[], advertencias: string
 }
 
 // ---------------------------------------------------------------------------
-// proveedor_generar_formulario (HU-3, DEC-04, DEC-07, DEC-09)
+// proveedor_generar_formulario (HU-06 a HU-09, DEC-04, DEC-07, DEC-09, DEC-25)
 // ---------------------------------------------------------------------------
 
 const esquemaArgMapeo = z
@@ -260,6 +202,7 @@ function verificarMapeoRecibido(recibido: ArgMapeo, guardado: MapeoGuardado): st
   return null
 }
 
+/** DEC-25: la decisión que envía el modelo debe coincidir con la que el backend registró del usuario. */
 function aplicarConfirmaciones(
   campos: CampoMapeado[],
   confirmaciones: NonNullable<ArgMapeo["confirmaciones"]>,
@@ -271,17 +214,20 @@ function aplicarConfirmaciones(
   if (confirmacion?.accion !== "confirmar_campos" || confirmacion.caso !== caso) {
     return "Las confirmaciones de campos requieren una confirmación explícita del usuario en su último mensaje."
   }
-  const autorizadas = new Set(confirmacion.etiquetas ?? [])
-  for (const decision of confirmaciones) {
-    if (!autorizadas.has(decision.etiqueta)) return `El usuario no confirmó el campo "${decision.etiqueta}".`
-    const campo = campos.find((c) => c.etiqueta === decision.etiqueta)
-    if (campo === undefined || campo.estado !== "requiere_confirmacion") {
-      return `El campo "${decision.etiqueta}" no está pendiente de confirmación.`
+  for (const { etiqueta, decision } of confirmaciones) {
+    const decisionUsuario = confirmacion.decisiones?.[etiqueta]
+    if (decisionUsuario === undefined) return `El usuario no dio una decisión sobre el campo "${etiqueta}".`
+    if (decisionUsuario !== decision) {
+      return `La decisión enviada para "${etiqueta}" no coincide con la del usuario (${decisionUsuario}). Use la decisión del usuario.`
     }
-    if (decision.decision === "aceptar") {
-      campo.estado = "lleno"
-      campo.confirmadoPorUsuario = true
-    } else {
+    const campo = campos.find((c) => c.etiqueta === etiqueta)
+    if (campo === undefined || campo.estado !== "requiere_confirmacion") {
+      return `El campo "${etiqueta}" no está pendiente de confirmación.`
+    }
+    campo.decisionUsuario = decision
+    campo.sesionDecision = ctx.sessionId
+    if (decision === "aceptar") campo.estado = "lleno"
+    else {
       campo.estado = "faltante"
       campo.valor = null
       campo.nota = "Descartado por el usuario."
@@ -349,7 +295,7 @@ export const generar_formulario = definirHerramienta({
 })
 
 // ---------------------------------------------------------------------------
-// proveedor_armar_paquete (HU-4, RN3)
+// proveedor_armar_paquete (HU-10, HU-11, HU-12, RN3)
 // ---------------------------------------------------------------------------
 
 export const armar_paquete = definirHerramienta({
@@ -419,7 +365,7 @@ export const armar_paquete = definirHerramienta({
 })
 
 // ---------------------------------------------------------------------------
-// proveedor_simular_envio (HU-4, RN4, DEC-06, DEC-10)
+// proveedor_simular_envio (HU-13, RN4, DEC-06, DEC-10)
 // ---------------------------------------------------------------------------
 
 export const simular_envio = definirHerramienta({
@@ -437,7 +383,7 @@ export const simular_envio = definirHerramienta({
       }
       const cargado = await cargarCaso(ctx.directory, caso)
       if (!cargado.ok) return error(cargado.error)
-      const estado = await leerJson(archivoEstado(ctx, caso), esquemaEstadoPaquete, "el estado del paquete")
+      const estado = await leerEstadoPaquete(ctx, caso)
       if (!estado.ok) return error("Primero arma el paquete para firma.")
       const borrador = Bun.file(join(rutas.salidaCaso(ctx.directory, caso), "paquete", "borrador-correo.md"))
       const cuerpo = (await borrador.exists()) ? await borrador.text() : "(sin borrador)"

@@ -102,6 +102,9 @@ describe("flujo con confirmaciones", () => {
     expect(cuerpo.needsConfirmation).toBe(true)
     expect(cuerpo.confirmacion).toMatchObject({ accion: "confirmar_campos", caso: CASO, etiquetas: ["RUC"] })
     expect(cuerpo.reply).toContain(PREGUNTA_RUC)
+    // El modelo simulado no escribió resumen: el backend agrega el resumen determinista.
+    expect(cuerpo.reply).toContain("Resumen del caso:")
+    expect(cuerpo.reply).toContain("- Campos por confirmar: RUC.")
     expect(cuerpo.toolCalls).toHaveLength(5)
     expect(cuerpo.toolCalls.every((l: { ok: boolean }) => l.ok)).toBe(true)
     expect(cuerpo.archivos).toContain(`out/${CASO}/valores-portal.md`)

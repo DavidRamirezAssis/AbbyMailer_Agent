@@ -25,6 +25,14 @@ function leer(json: string): Respuesta {
   return JSON.parse(json) as Respuesta
 }
 
+/** DEC-28: resume la confirmación que el flujo indica al cerrar el turno. */
+function pasoSiguiente(respuesta: Respuesta): string {
+  const paso = (respuesta as { siguiente_paso?: string }).siguiente_paso ?? ""
+  const accion = paso.match(/accion="([a-z_]+)"/)?.[1]
+  const etiquetasPaso = paso.match(/etiquetas=(\[[^\]]*\])/)?.[1]
+  return accion ? `solicitar confirmación (${accion}${etiquetasPaso && etiquetasPaso !== "[]" ? ` ${etiquetasPaso}` : ""})` : paso
+}
+
 function contar(data: Record<string, unknown>, clave: string): number {
   const valor = data[clave]
   return Array.isArray(valor) ? valor.length : 0
@@ -64,6 +72,7 @@ async function procesar(caso: string): Promise<void> {
   if (paqueteA.ok) {
     const motivos = (paqueteA.data.checklist as { motivos: string[] }).motivos
     console.log(`  [A] listo_para_firma=${paqueteA.data.listo_para_firma}${motivos.length ? ` | ${motivos.join(" ")}` : ""}`)
+    console.log(`  [A] Siguiente paso: ${pasoSiguiente(paqueteA)}`)
   } else console.log(`  [A] Paquete: ${paqueteA.error}`)
 
   const envioSinConfirmar = leer(await simular_envio.execute({ caso, confirmado: true }, ctx))

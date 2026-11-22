@@ -140,9 +140,16 @@ function conservarDecisiones(nuevos: CampoMapeado[], previos: CampoMapeado[], se
   })
 }
 
+/** CA2: los totales se entregan calculados para que el modelo no tenga que contar. */
+function totales(campos: CampoMapeado[]) {
+  const contar = (estado: CampoMapeado["estado"]) => campos.filter((c) => c.estado === estado).length
+  return { campos: campos.length, llenos: contar("lleno"), faltantes: contar("faltante"), por_confirmar: contar("requiere_confirmacion") }
+}
+
 function resumirMapeo(caso: string, campos: CampoMapeado[], advertencias: string[]) {
   return {
     caso,
+    totales: totales(campos),
     llenos: campos
       .filter((c) => c.estado === "lleno")
       .map(({ etiqueta, ruta, valor, confianza, decisionUsuario }) => ({
@@ -168,39 +175,19 @@ function resumirMapeo(caso: string, campos: CampoMapeado[], advertencias: string
 
 const esquemaArgMapeo = z
   .object({
-    campos: z
-      .array(
-        z.object({
-          etiqueta: z.string().describe("Etiqueta del campo en la plantilla del cliente"),
-          ruta: z.string().nullable().describe("Ruta del dato en el maestro, o null si es faltante"),
-        }),
-      )
-      .optional()
-      .describe("Campos devueltos por proveedor_mapear_campos; los valores se vuelven a leer del maestro"),
     confirmaciones: z
       .array(
         z.object({
           etiqueta: z.string().describe("Etiqueta del campo que requería confirmación"),
-          decision: z.enum(["aceptar", "descartar"]).describe("Decisión explícita del usuario"),
+          decision: z.enum(["aceptar", "descartar"]).describe("Decisión del usuario indicada en la [Nota del sistema]"),
         }),
       )
       .optional()
-      .describe("Decisiones del usuario sobre campos en requiere_confirmacion (solo si el usuario las dio)"),
+      .describe("Solo si una [Nota del sistema] informa la decisión del usuario; en otro caso omítalo"),
   })
-  .describe("Resultado del mapeo y confirmaciones del usuario")
+  .describe("Confirmaciones del usuario. El mapeo de los campos se toma del registro del caso; no lo envíe.")
 
 type ArgMapeo = z.infer<typeof esquemaArgMapeo>
-
-function verificarMapeoRecibido(recibido: ArgMapeo, guardado: MapeoGuardado): string | null {
-  for (const campo of recibido.campos ?? []) {
-    const registrado = guardado.campos.find((c) => c.etiqueta === campo.etiqueta)
-    if (registrado === undefined) return `El campo "${campo.etiqueta}" no existe en el mapeo registrado del caso.`
-    if (registrado.ruta !== campo.ruta && registrado.estado !== "faltante") {
-      return `El mapeo recibido para "${campo.etiqueta}" no coincide con el mapeo registrado.`
-    }
-  }
-  return null
-}
 
 /** DEC-25: la decisión que envía el modelo debe coincidir con la que el backend registró del usuario. */
 function aplicarConfirmaciones(
@@ -264,8 +251,7 @@ export const generar_formulario = definirHerramienta({
       const maestro = await cargarMaestro(ctx.directory)
       if (!maestro.ok) return error(maestro.error)
 
-      const discrepancia = verificarMapeoRecibido(mapeo, guardado.data)
-      if (discrepancia) return error(discrepancia)
+      // DEC-04: el mapeo registrado es la única fuente; el modelo solo aporta confirmaciones.
       const campos = guardado.data.campos
       const rechazo = aplicarConfirmaciones(campos, mapeo.confirmaciones ?? [], ctx, caso)
       if (rechazo) return error(rechazo)
@@ -354,6 +340,7 @@ export const armar_paquete = definirHerramienta({
         ruta: rutaRelativa(ctx, carpetaPaquete),
         listo_para_firma: evaluacion.listo_para_firma,
         fecha_referencia: fecha,
+        totales: totales(guardado.data.campos),
         checklist: evaluacion,
       }
       return {

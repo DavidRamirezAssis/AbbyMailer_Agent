@@ -3,7 +3,7 @@ import { resolve, sep } from "node:path"
 import { z } from "zod"
 import { type LlamadaEjecutada, ejecutarTurno } from "../agente/ciclo.ts"
 import { type ConfirmacionPendiente, type Interpretacion, construirConfirmacion, interpretarTexto, notaParaModelo } from "../agente/confirmacion.ts"
-import { archivosGenerados, resumirLlamada } from "../agente/resumen.ts"
+import { archivosGenerados, resumenDeterminista, resumirLlamada } from "../agente/resumen.ts"
 import { type AlmacenSesiones, type Sesion, totalTokens } from "../agente/sesiones.ts"
 import type { Config } from "../config.ts"
 import type { AdaptadorLLM, UsoTokens } from "../llm/adapter.ts"
@@ -174,8 +174,11 @@ async function procesarTurno(
   sesion.pendiente = confirmacionSolicitada(turno.llamadas)
 
   let respuesta = turno.respuesta
-  if (sesion.pendiente !== null && !respuesta.includes(sesion.pendiente.pregunta)) {
-    respuesta = `${respuesta}\n\n${sesion.pendiente.pregunta}`.trim()
+  if (sesion.pendiente !== null) {
+    const { pregunta } = sesion.pendiente
+    // Si el modelo cerró el turno sin escribir el resumen, se usa el resumen determinista.
+    if (respuesta.replace(pregunta, "").trim() === "") respuesta = resumenDeterminista(turno.llamadas)
+    if (!respuesta.includes(pregunta)) respuesta = `${respuesta}\n\n${pregunta}`.trim()
   }
   const llamadas = turno.llamadas.map(resumirLlamada)
   sesion.turnos.push({

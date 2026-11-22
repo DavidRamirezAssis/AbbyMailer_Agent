@@ -23,7 +23,7 @@ function resumirExito(nombre: string, data: unknown): string {
       const motivos = campo(campo(data, "checklist"), "motivos")
       return campo(data, "listo_para_firma") === true
         ? "Paquete listo para firma"
-        : `Paquete no listo para firma (${largo(motivos)} motivos)`
+        : `Paquete no listo para firma (${largo(motivos)} ${largo(motivos) === 1 ? "motivo" : "motivos"})`
     }
     case "proveedor_simular_envio":
       return `Envío simulado: ${String(campo(data, "ruta"))}`

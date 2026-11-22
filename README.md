@@ -4,7 +4,6 @@ Este repositorio contiene una prueba técnica que implementa un agente conversac
 
 Reto técnico 01: Agente "Registro como Proveedor". El agente prepara el registro de Periferia IT Group como proveedor ante sus clientes: lee la solicitud, llena el formulario desde el repositorio maestro y arma el paquete para firma. Nunca firma ni envía sin confirmación humana.
 
-> Estado: andamiaje en construcción.
 
 ## Requisitos
 
@@ -47,6 +46,8 @@ Ver `.env.example`.
 | `GET` | `/api/health` | Estado del servicio, proveedor y modelo, sin exponer claves. |
 | `POST` | `/api/chat` | `{ sessionId?, message?, confirmacion?: { decision } }` -> `{ sessionId, reply, toolCalls[], needsConfirmation, confirmacion, archivos[], modelo, uso }`. Sin `sessionId` crea una sesión. |
 | `GET` | `/api/sessions/:id` | Historial completo de la sesión: turnos, llamadas a herramientas, confirmación pendiente y consumo. |
+| `GET` | `/api/files/:caso` | Archivos generados del caso (sin los archivos internos de trabajo). |
+| `GET` | `/api/files/:caso/<ruta>` | Descarga de un archivo generado. Si hay `ACCESS_KEY`, acepta la cabecera `x-access-key` o el parámetro `?clave=`. |
 
 ## Link de prueba
 

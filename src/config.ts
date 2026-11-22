@@ -23,8 +23,20 @@ const esquemaConfig = z.object({
 
 export type Config = z.infer<typeof esquemaConfig>
 
+/**
+ * Una variable definida pero vacía (p. ej. `PORT=` en el panel de la plataforma)
+ * se trata como no definida y toma su valor por defecto.
+ */
+function sinVacias(entorno: Record<string, string | undefined>): Record<string, string> {
+  const resultado: Record<string, string> = {}
+  for (const [clave, valor] of Object.entries(entorno)) {
+    if (valor !== undefined && valor.trim() !== "") resultado[clave] = valor.trim()
+  }
+  return resultado
+}
+
 export function cargarConfig(entorno: Record<string, string | undefined> = process.env): Config {
-  const resultado = esquemaConfig.safeParse(entorno)
+  const resultado = esquemaConfig.safeParse(sinVacias(entorno))
   if (!resultado.success) {
     const detalle = resultado.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")
     throw new Error(`Configuración inválida: ${detalle}`)

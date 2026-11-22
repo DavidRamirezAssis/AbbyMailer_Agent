@@ -238,6 +238,38 @@ describe("controles de la API", () => {
     expect((await enviar({ message: "c" }, cabecera, limitado)).estado).toBe(429)
   })
 
+  test("lista y descarga los archivos generados del caso, sin exponer los internos (HU-18)", async () => {
+    await procesarHastaPreguntaRuc()
+    const listado = (await (await manejar(new Request(`http://local/api/files/${CASO}`))).json()) as { archivos: { ruta: string }[] }
+    const rutasListadas = listado.archivos.map((a) => a.ruta)
+    expect(rutasListadas).toContain("valores-portal.md")
+    expect(rutasListadas).toContain("paquete/checklist.md")
+    expect(rutasListadas.some((r) => r.endsWith("mapeo.json") || r.endsWith("log.jsonl") || r.endsWith("estado-paquete.json"))).toBe(false)
+
+    const descarga = await manejar(new Request(`http://local/api/files/${CASO}/paquete/checklist.md`))
+    expect(descarga.status).toBe(200)
+    expect(descarga.headers.get("content-disposition")).toContain('filename="checklist.md"')
+    expect(await descarga.text()).toContain("Lista de verificación")
+  })
+
+  test("rechaza rutas fuera de la carpeta del caso y archivos internos (HU-18)", async () => {
+    await procesarHastaPreguntaRuc()
+    for (const ruta of [
+      `/api/files/${CASO}/..%2F..%2Fpackage.json`,
+      `/api/files/${CASO}/%2E%2E%2F%2E%2E%2F.env`,
+      `/api/files/${CASO}/mapeo.json`,
+      `/api/files/..%2Ffixtures/maestro.json`,
+    ]) {
+      expect((await manejar(new Request(`http://local${ruta}`))).status).toBe(404)
+    }
+  })
+
+  test("con clave de acceso, la descarga acepta el parámetro clave", async () => {
+    const protegido = preparar({ ACCESS_KEY: "clave-de-prueba" })
+    expect((await protegido(new Request(`http://local/api/files/${CASO}`))).status).toBe(401)
+    expect((await protegido(new Request(`http://local/api/files/${CASO}?clave=clave-de-prueba`))).status).toBe(200)
+  })
+
   test("el historial de la sesión incluye los turnos y las llamadas (HU-19)", async () => {
     const { cuerpo } = await procesarHastaPreguntaRuc()
     const respuesta = await manejar(new Request(`http://local/api/sessions/${cuerpo.sessionId}`))

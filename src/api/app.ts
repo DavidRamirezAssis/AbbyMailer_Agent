@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto"
-import { resolve, sep } from "node:path"
+import { readdir, stat } from "node:fs/promises"
+import { basename, relative, resolve, sep } from "node:path"
 import { z } from "zod"
 import { type LlamadaEjecutada, ejecutarTurno } from "../agente/ciclo.ts"
 import { type ConfirmacionPendiente, type Interpretacion, construirConfirmacion, interpretarTexto, notaParaModelo } from "../agente/confirmacion.ts"
@@ -9,6 +10,7 @@ import type { Config } from "../config.ts"
 import type { AdaptadorLLM, UsoTokens } from "../llm/adapter.ts"
 import { estimarCostoUsd } from "../llm/precios.ts"
 import type { ConfirmacionUsuario } from "../tools/contrato.ts"
+import { nombreCasoValido, rutas } from "../tools/fuentes.ts"
 import { HERRAMIENTAS_CON_ESTADO, HERRAMIENTAS_DE_CIERRE, HERRAMIENTA_CONFIRMACION, type HerramientaRegistrada } from "../tools/index.ts"
 
 // API HTTP (PRD §6.4): estado, chat, historial de sesión y front estático en una sola URL (DEC-18).
@@ -67,7 +69,8 @@ export function crearManejador(deps: Dependencias): (peticion: Request, servidor
   function accesoPermitido(peticion: Request): boolean {
     const esperada = deps.config.ACCESS_KEY
     if (esperada === "") return true
-    const recibida = Buffer.from(peticion.headers.get("x-access-key") ?? "")
+    // Los enlaces de descarga no pueden enviar cabeceras: se acepta también el parámetro "clave".
+    const recibida = Buffer.from(peticion.headers.get("x-access-key") ?? new URL(peticion.url).searchParams.get("clave") ?? "")
     const clave = Buffer.from(esperada)
     return recibida.length === clave.length && timingSafeEqual(recibida, clave)
   }
@@ -97,6 +100,8 @@ export function crearManejador(deps: Dependencias): (peticion: Request, servidor
       }
       const sesion = ruta.match(/^\/api\/sessions\/([^/]+)$/)
       if (sesion?.[1] !== undefined && peticion.method === "GET") return historial(deps, sesion[1])
+      const archivo = ruta.match(/^\/api\/files\/([^/]+)(?:\/(.+))?$/)
+      if (archivo?.[1] !== undefined && peticion.method === "GET") return archivosDelCaso(deps.raiz, archivo[1], archivo[2])
       return errorApi(404, "no_encontrado", "Ruta no encontrada")
     }
 
@@ -218,6 +223,46 @@ function indicadoresUso(modelo: string, turno: UsoTokens, sesion: UsoTokens, lim
     sesion: { entrada: sesion.tokensEntrada, salida: sesion.tokensSalida, usados, limite, restante: Math.max(0, limite - usados) },
     costoEstimadoUsd: { turno: estimarCostoUsd(modelo, turno), sesion: estimarCostoUsd(modelo, sesion) },
   }
+}
+
+/** Archivos de trabajo internos que no se exponen para descarga. */
+const ARCHIVOS_INTERNOS = new Set(["mapeo.json", "estado-paquete.json", "log.jsonl"])
+
+/** HU-18: listado (sin ruta) o descarga (con ruta) de los archivos generados de un caso. */
+async function archivosDelCaso(raiz: string, caso: string, rutaCodificada: string | undefined): Promise<Response> {
+  if (!nombreCasoValido(caso)) return errorApi(404, "no_encontrado", "Caso no encontrado.")
+  const carpeta = resolve(rutas.salidaCaso(raiz, caso))
+  const relativaDe = (absoluta: string) => relative(carpeta, absoluta).split(sep).join("/")
+
+  if (rutaCodificada === undefined) {
+    let nombres: string[]
+    try {
+      nombres = await readdir(carpeta, { recursive: true })
+    } catch {
+      return json(200, { ok: true, caso, archivos: [] })
+    }
+    const archivos: { ruta: string; bytes: number }[] = []
+    for (const nombre of nombres.sort()) {
+      const absoluta = resolve(carpeta, nombre)
+      const info = await stat(absoluta)
+      if (info.isFile() && !ARCHIVOS_INTERNOS.has(basename(absoluta))) archivos.push({ ruta: relativaDe(absoluta), bytes: info.size })
+    }
+    return json(200, { ok: true, caso, archivos })
+  }
+
+  let solicitada: string
+  try {
+    solicitada = decodeURIComponent(rutaCodificada)
+  } catch {
+    return errorApi(400, "solicitud_invalida", "Ruta de archivo inválida.")
+  }
+  const absoluta = resolve(carpeta, solicitada)
+  if (!absoluta.startsWith(carpeta + sep) || ARCHIVOS_INTERNOS.has(basename(absoluta))) {
+    return errorApi(404, "no_encontrado", "Archivo no encontrado.")
+  }
+  const archivo = Bun.file(absoluta)
+  if (!(await archivo.exists())) return errorApi(404, "no_encontrado", "Archivo no encontrado.")
+  return new Response(archivo, { headers: { "content-disposition": `attachment; filename="${basename(absoluta)}"` } })
 }
 
 function historial(deps: Dependencias, id: string): Response {

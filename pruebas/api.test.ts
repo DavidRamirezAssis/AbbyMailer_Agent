@@ -105,7 +105,7 @@ describe("flujo con confirmaciones", () => {
     expect(cuerpo.toolCalls).toHaveLength(5)
     expect(cuerpo.toolCalls.every((l: { ok: boolean }) => l.ok)).toBe(true)
     expect(cuerpo.archivos).toContain(`out/${CASO}/valores-portal.md`)
-    expect(cuerpo.uso.sesion).toMatchObject({ usados: 5500, limite: 90000, restante: 84500 })
+    expect(cuerpo.uso.sesion).toMatchObject({ usados: 5500, limite: 400000, restante: 394500 })
     expect(cuerpo.uso.costoEstimadoUsd.sesion).toBeGreaterThan(0)
   })
 

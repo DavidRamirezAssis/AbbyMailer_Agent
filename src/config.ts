@@ -16,7 +16,7 @@ const esquemaConfig = z.object({
   LLM_EFFORT: z.enum(["low", "medium", "high"]).default("low"),
   LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
   MAX_ITERACIONES: z.coerce.number().int().positive().default(25),
-  MAX_TOKENS_SESION: z.coerce.number().int().positive().default(90000),
+  MAX_TOKENS_SESION: z.coerce.number().int().positive().default(400000),
   LIMITE_PETICIONES_POR_MINUTO: z.coerce.number().int().positive().default(20),
   ACCESS_KEY: z.string().default(""),
 })

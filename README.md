@@ -14,7 +14,7 @@ Reto técnico 01: Agente "Registro como Proveedor". El agente prepara el registr
 ```bash
 bun install
 cp .env.example .env   # completar ANTHROPIC_API_KEY
-bun run dev
+bun run dev            # front y backend en una sola URL
 ```
 
 La aplicación queda disponible en `http://localhost:3000`.
@@ -29,15 +29,16 @@ bun install && bun run demo.ts
 
 ## Pruebas
 
-Pruebas del ciclo del agente con un adaptador simulado. No requieren clave ni consumen créditos.
+Pruebas del ciclo del agente, la API y el flujo con un modelo simulado. No requieren clave ni consumen créditos.
 
 ```bash
-bun test
+bun test            # 53 pruebas
+bun run typecheck   # revisión de tipos
 ```
 
 ## Variables de entorno
 
-Ver `.env.example`.
+Ver `.env.example`: cada variable está comentada. La única obligatoria para el chat es `ANTHROPIC_API_KEY`; `demo.ts` y las pruebas no la necesitan.
 
 ## API
 
@@ -51,4 +52,17 @@ Ver `.env.example`.
 
 ## Link de prueba
 
-Pendiente de despliegue.
+**https://abbymailer-agent.onrender.com**
+
+- No requiere clave de acceso.
+- El servicio está en la capa gratuita de Render: si estuvo inactivo más de 15 minutos, el primer acceso puede tardar cerca de un minuto.
+- Ejemplo para empezar: `Procesa el caso ec-corp-andina. Dime qué campos quedaron llenos, cuáles faltan, si el paquete está listo para firma y qué soportes debo actualizar. No envíes nada todavía.`
+
+## Documentación
+
+| Documento | Contenido |
+|---|---|
+| `SOLUCION.md` | Planteamiento de la solución (estructura de PRD §9.1). |
+| `docs/HISTORIAS-USUARIO.md` | Historias de usuario granulares con criterios de aceptación. |
+| `docs/DECISIONES.md` | Registro de decisiones con su trazabilidad al PRD. |
+| `docs/PRUEBAS.md` | Pruebas de robustez del agente y arranque en máquina limpia. |

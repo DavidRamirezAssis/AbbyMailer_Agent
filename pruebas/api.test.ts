@@ -57,6 +57,24 @@ class ModeloSimulado implements AdaptadorLLM {
   }
 }
 
+/** Forma de las respuestas de la API usada en estas pruebas (sin `any`, PRD §8). */
+interface RespuestaApi {
+  ok?: boolean
+  codigo?: string
+  error?: string
+  sessionId: string
+  reply: string
+  toolCalls: { nombre: string; ok: boolean; resumen: string }[]
+  needsConfirmation: boolean
+  confirmacion: { accion: string; caso: string; etiquetas: string[]; pregunta: string } | null
+  archivos: string[]
+  uso: {
+    sesion: { usados: number; limite: number; restante: number }
+    costoEstimadoUsd: { turno: number | null; sesion: number | null }
+  }
+  turnos: { llamadas: unknown[] }[]
+}
+
 let modelo: ModeloSimulado
 let manejar: ReturnType<typeof crearManejador>
 
@@ -69,7 +87,7 @@ async function enviar(cuerpo: unknown, cabeceras: Record<string, string> = {}, m
   const respuesta = await m(
     new Request("http://local/api/chat", { method: "POST", headers: { "content-type": "application/json", ...cabeceras }, body: JSON.stringify(cuerpo) }),
   )
-  return { estado: respuesta.status, cuerpo: (await respuesta.json()) as Record<string, any> }
+  return { estado: respuesta.status, cuerpo: (await respuesta.json()) as RespuestaApi }
 }
 
 const PROCESO: [string, unknown][][] = [
@@ -109,7 +127,7 @@ describe("flujo con confirmaciones", () => {
     expect(cuerpo.toolCalls.every((l: { ok: boolean }) => l.ok)).toBe(true)
     expect(cuerpo.archivos).toContain(`out/${CASO}/valores-portal.md`)
     expect(cuerpo.uso.sesion).toMatchObject({ usados: 5500, limite: 400000, restante: 394500 })
-    expect(cuerpo.uso.costoEstimadoUsd.sesion).toBeGreaterThan(0)
+    expect(cuerpo.uso.costoEstimadoUsd.sesion ?? 0).toBeGreaterThan(0)
   })
 
   test("aceptar el campo, confirmar el envío y simularlo", async () => {
@@ -124,12 +142,12 @@ describe("flujo con confirmaciones", () => {
     const segundo = await enviar({ sessionId, message: "Sí" })
     expect(modelo.ultimoTextoUsuario()).toContain('decidió "aceptar"')
     expect(segundo.cuerpo.toolCalls.map((l: { ok: boolean }) => l.ok)).toEqual([true, true, true])
-    expect(segundo.cuerpo.toolCalls[1].resumen).toBe("Paquete listo para firma")
+    expect(segundo.cuerpo.toolCalls[1]?.resumen).toBe("Paquete listo para firma")
     expect(segundo.cuerpo.confirmacion).toMatchObject({ accion: "enviar" })
 
     modelo.guion(llamadas(["proveedor_simular_envio", { caso: CASO, confirmado: true }]), texto("Envío simulado."))
     const tercero = await enviar({ sessionId, message: "envía" })
-    expect(tercero.cuerpo.toolCalls[0].ok).toBe(true)
+    expect(tercero.cuerpo.toolCalls[0]?.ok).toBe(true)
     expect(tercero.cuerpo.needsConfirmation).toBe(false)
     expect(await Bun.file(join(RAIZ, "out", CASO, "ENVIO-SIMULADO.md")).exists()).toBe(true)
   })
@@ -141,8 +159,8 @@ describe("flujo con confirmaciones", () => {
       texto("Entendido."),
     )
     const respuesta = await enviar({ sessionId: cuerpo.sessionId, message: "No. Nos pidieron tramitar primero el RUC panameño; no pongas el NIT." })
-    expect(respuesta.cuerpo.toolCalls[0].ok).toBe(false)
-    expect(respuesta.cuerpo.toolCalls[0].resumen).toContain("no coincide con la del usuario")
+    expect(respuesta.cuerpo.toolCalls[0]?.ok).toBe(false)
+    expect(respuesta.cuerpo.toolCalls[0]?.resumen).toContain("no coincide con la del usuario")
   })
 
   test("una respuesta ambigua no confirma nada", async () => {
@@ -153,7 +171,7 @@ describe("flujo con confirmaciones", () => {
     )
     const respuesta = await enviar({ sessionId: cuerpo.sessionId, message: "tal vez" })
     expect(modelo.ultimoTextoUsuario()).toContain("no es una decisión inequívoca")
-    expect(respuesta.cuerpo.toolCalls[0].ok).toBe(false)
+    expect(respuesta.cuerpo.toolCalls[0]?.ok).toBe(false)
     expect(respuesta.cuerpo.needsConfirmation).toBe(false)
   })
 
@@ -164,7 +182,7 @@ describe("flujo con confirmaciones", () => {
       texto("Descartado."),
     )
     const respuesta = await enviar({ sessionId: cuerpo.sessionId, confirmacion: { decision: "descartar" } })
-    expect(respuesta.cuerpo.toolCalls[0].ok).toBe(true)
+    expect(respuesta.cuerpo.toolCalls[0]?.ok).toBe(true)
   })
 
   test("DEC-26: volver a mapear conserva la decisión del usuario", async () => {
@@ -175,7 +193,7 @@ describe("flujo con confirmaciones", () => {
       texto("Campos actualizados."),
     )
     const respuesta = await enviar({ sessionId: cuerpo.sessionId, message: "Sí" })
-    expect(respuesta.cuerpo.toolCalls[1].resumen).toBe("9 llenos, 0 faltantes, 0 por confirmar")
+    expect(respuesta.cuerpo.toolCalls[1]?.resumen).toBe("9 llenos, 0 faltantes, 0 por confirmar")
   })
 
   test("DEC-26: una sesión nueva no hereda la decisión de otra sesión", async () => {
@@ -189,15 +207,15 @@ describe("flujo con confirmaciones", () => {
     // Otra sesión procesa el mismo caso: el RUC vuelve a requerir confirmación.
     const nueva = await procesarHastaPreguntaRuc()
     expect(nueva.cuerpo.sessionId).not.toBe(cuerpo.sessionId)
-    expect(nueva.cuerpo.toolCalls[1].resumen).toBe("8 llenos, 0 faltantes, 1 por confirmar")
+    expect(nueva.cuerpo.toolCalls[1]?.resumen).toBe("8 llenos, 0 faltantes, 1 por confirmar")
     expect(nueva.cuerpo.needsConfirmation).toBe(true)
   })
 
   test("el envío sin confirmación pendiente se rechaza", async () => {
     modelo.guion(llamadas(["proveedor_simular_envio", { caso: CASO, confirmado: true }]), texto("No pude enviar."))
     const { cuerpo } = await enviar({ message: "envía" })
-    expect(cuerpo.toolCalls[0].ok).toBe(false)
-    expect(cuerpo.toolCalls[0].resumen).toBe("requiere confirmación explícita")
+    expect(cuerpo.toolCalls[0]?.ok).toBe(false)
+    expect(cuerpo.toolCalls[0]?.resumen).toBe("requiere confirmación explícita")
   })
 })
 
@@ -273,9 +291,9 @@ describe("controles de la API", () => {
   test("el historial de la sesión incluye los turnos y las llamadas (HU-19)", async () => {
     const { cuerpo } = await procesarHastaPreguntaRuc()
     const respuesta = await manejar(new Request(`http://local/api/sessions/${cuerpo.sessionId}`))
-    const historial = (await respuesta.json()) as Record<string, any>
+    const historial = (await respuesta.json()) as RespuestaApi
     expect(historial.turnos).toHaveLength(1)
-    expect(historial.turnos[0].llamadas).toHaveLength(5)
-    expect(historial.confirmacion.accion).toBe("confirmar_campos")
+    expect(historial.turnos[0]?.llamadas).toHaveLength(5)
+    expect(historial.confirmacion?.accion).toBe("confirmar_campos")
   })
 })

@@ -9,10 +9,10 @@
 | Atributo | Valor |
 |---|---|
 | Documento | Historias de Usuario Extendidas (documento fuente para el desarrollo) |
-| Versión | 1.2 |
+| Versión | 1.3 |
 | Fecha | 2026-11-21 |
 | Estado | Aprobado |
-| Documentos base | `PRD-01-agente-registro-proveedor 4.md` v2.0 (historias HU-1 a HU-5 y requisitos asociados); registro de decisiones de diseño v1.5 (documento de trabajo cuyo contenido se integra en `SOLUCION.md`) |
+| Documentos base | `PRD-01-agente-registro-proveedor 4.md` v2.0 (historias HU-1 a HU-5 y requisitos asociados); `docs/DECISIONES.md` |
 | Ubicación | `docs/HISTORIAS-USUARIO.md` del repositorio |
 | Uso | Una vez aprobado, cada commit y cada PR se relacionan con los identificadores de este documento |
 
@@ -23,6 +23,7 @@
 | 1.0 | 2026-11-21 | Versión inicial: 27 historias derivadas de las 5 historias del PRD, de los requisitos de arquitectura y no funcionales, y de las decisiones DEC-01 a DEC-23. |
 | 1.1 | 2026-11-21 | Se retiran los actores Evaluador técnico y Responsable de la plataforma, que no corresponden al negocio, y las siete historias que dependían de ellos (criterios de validación de la prueba y requisitos no funcionales; ver sección 7.3). La descarga de archivos, el historial de sesión y la auditoría quedan con la analista administrativa como único actor. |
 | 1.2 | 2026-11-21 | Se renumeran las historias para eliminar huecos, dado que el documento no había sido versionado: la auditoría de acciones pasa a HU-20 con sus ítems. Documento aprobado y versionado en `docs/` del repositorio como fuente para el desarrollo. |
+| 1.3 | 2026-11-24 | Se actualiza el estado de implementación (§7.4) y la referencia al registro de decisiones, ahora en `docs/DECISIONES.md`. |
 
 ---
 
@@ -801,14 +802,11 @@ Los siguientes requisitos del PRD no son historias de usuario. Los commits que l
 | Documentar la solución (`SOLUCION.md`, `README.md`) | Entregable de la prueba | PRD §9.1, §9.2 |
 | Empaquetar el agente como módulo reutilizable | Entregable opcional de la prueba | PRD §9.4 |
 
-### 7.4 Estado de implementación al 2026-11-21
+### 7.4 Estado de implementación al 2026-11-24
 
-Este estado sirve para planear los PR. Se actualiza con cada entrega.
-
-| Historia | Estado | Comentario |
+| Historia | Estado | Evidencia |
 |---|---|---|
-| HU-01 | Pendiente | Requiere el ciclo del agente y el front. |
-| HU-02, HU-03, HU-04, HU-05, HU-07, HU-08, HU-09, HU-10, HU-11, HU-12, HU-20 | Implementada en herramientas | Falta la integración con el agente para los criterios que se observan en el chat (CA-05.06, CA-11.08). |
-| HU-06, HU-13 | Implementada en herramientas | Falta la validación de la confirmación en el backend y la pregunta del agente. |
-| HU-14 | Parcial | Las herramientas cumplen; faltan los errores del proveedor de lenguaje (CA-14.04). |
-| HU-15, HU-16, HU-17, HU-18, HU-19 | Pendiente | Ciclo del agente, front y API (cronograma: domingo 22). |
+| HU-01 a HU-08, HU-10 a HU-20 | Hecha | `demo.ts`, `bun test` (53 pruebas), pruebas con el modelo real y revisión de la interfaz (`docs/PRUEBAS.md`) |
+| HU-09 | Hecha | CA-09.06 se cumple con la sección 5 de `SOLUCION.md` |
+
+Hallazgo abierto fuera del alcance de las historias: H-01 (`docs/PRUEBAS.md` §5), reservado para una etapa de refinamiento del agente.
